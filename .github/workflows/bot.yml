@@ -2,10 +2,9 @@ name: Sync
 
 on:
   push:
-    branches: 
 
   schedule:
-  - cron: "0 0 * * *"
+  - cron: "0 23 * * *"
 
 jobs:
   sync:
@@ -14,19 +13,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repo: [openwrt/openwrt, openwrt/packages, openwrt/luci, hanwckf/rt-n56u]
+        repo: [openwrt/openwrt, openwrt/packages, openwrt/luci, qbittorrent/qBittorrent, hanwckf/rt-n56u, hanwckf/mt7615]
     steps:
+      - run: echo "::set-env name=month::$(date +%m)"
+      - name: Cache repo
+        uses: actions/cache@v2
+        id: cache
+        with:
+          path: ${{ matrix.repo }}
+          key: source-${{ matrix.repo }}-${{ env.month }}
       - name: Clone original codes
+        if: steps.cache.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
         run: |
-          hub clone ${{ matrix.repo }} repo
+          hub clone ${{ matrix.repo }} ${{ matrix.repo }}
+      - name: Pull original codes
+        id: pull
+        env:
+          GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
+        run: |
+          cd ${{ matrix.repo }}
+          pre_head=$(git rev-parse HEAD)
+          hub sync
+          update=1
+          [ "${{ steps.cache.outputs.cache-hit }}" = "true" ] && [ "$pre_head" = "$(git rev-parse HEAD)" ] && update=0
+          echo "::set-output name=update::${update}"
       - name: Push to self repo
+        if: steps.pull.outputs.update == '1'
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
         run: |
-          cd repo
+          cd ${{ matrix.repo }}
+          [ -n "$(git remote | grep own)" ] && git remote remove own
           repo_name=$(basename ${{ matrix.repo }})
-          git remote add own https://brvphoenix:${{ secrets.SUPER_TOKEN }}@github.com/brvphoenix/${repo_name}.git 
-          hub push own master
-          
+          git remote add own https://brvphoenix:${{ secrets.SUPER_TOKEN }}@github.com/brvphoenix/${repo_name}.git
+          hub push own "$(basename $(git symbolic-ref refs/remotes/origin/HEAD))"
+          git remote remove own
