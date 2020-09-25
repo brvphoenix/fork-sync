@@ -1,0 +1,32 @@
+name: Sync
+
+on:
+  push:
+    branches: 
+
+  schedule:
+  - cron: "0 0 * * *"
+
+jobs:
+  sync:
+    name: Sync ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [openwrt/openwrt, openwrt/packages, openwrt/luci, hanwckf/rt-n56u]
+    steps:
+      - name: Clone original codes
+        env:
+          GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
+        run: |
+          hub clone ${{ matrix.repo }} repo
+      - name: Push to self repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
+        run: |
+          cd repo
+          repo_name=$(basename ${{ matrix.repo }})
+          git remote add own https://brvphoenix:${{ secrets.SUPER_TOKEN }}@github.com/brvphoenix/${repo_name}.git 
+          hub push own master
+          
