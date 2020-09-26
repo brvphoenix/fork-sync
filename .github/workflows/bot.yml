@@ -15,15 +15,8 @@ jobs:
       matrix:
         repo: [openwrt/openwrt, openwrt/packages, openwrt/luci, qbittorrent/qBittorrent, hanwckf/rt-n56u, hanwckf/mt7615]
     steps:
-      - name: Cache Hash
-        uses: actions/cache@v2
-        with:
-          path: hashfile
-          key: Hash-${{ matrix.repo }}-${{ github.run_id }}
-          restore-keys: |
-            Hash-${{ matrix.repo }}-
       - run: |
-          [ -e "./hashfile/hashfile" ] && hash="$(echo $(cat ./hashfile/hashfile))" || hash="${{ github.run_id }}"
+          hash="$(git ls-remote git://github.com/${{ matrix.repo }}.git HEAD | cut -f 1)"
           echo "::set-env name=hash::${hash}"
       - name: Cache Repo
         uses: actions/cache@v2
@@ -36,7 +29,7 @@ jobs:
       - name: Clone Original Codes
         if: steps.cache.outputs.cache-hit != 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           [ -e "${{ matrix.repo }}/.git" ] || hub clone ${{ matrix.repo }} ${{ matrix.repo }}
       - name: Pull original codes
@@ -44,13 +37,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
         run: |
-          mkdir -p hashfile
           cd ${{ matrix.repo }}
           hub sync
-          head="$(git rev-parse --short HEAD)"
-          [ "${{ env.hash }}" != "$head" ] && echo "$head" > ${{ github.workspace }}/hashfile/hashfile
-          update=1
-          [ "${{ steps.cache.outputs.cache-hit }}" = "true" ] && [ "${{ env.hash }}" = "$head" ] && update=0
+          head="$(git rev-parse HEAD)"
+          [ "${{ steps.cache.outputs.cache-hit }}" = "true" ] && [ "${{ env.hash }}" = "$head" ] && update=0 || update=1
           echo "::set-output name=update::${update}"
       - name: Push to Self Repo
         if: steps.pull.outputs.update == '1'
