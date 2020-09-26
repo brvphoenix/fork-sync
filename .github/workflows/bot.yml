@@ -15,31 +15,44 @@ jobs:
       matrix:
         repo: [openwrt/openwrt, openwrt/packages, openwrt/luci, qbittorrent/qBittorrent, hanwckf/rt-n56u, hanwckf/mt7615]
     steps:
-      - run: echo "::set-env name=month::$(date +%m)"
-      - name: Cache repo
+      - name: Cache Hash
+        uses: actions/cache@v2
+        with:
+          path: hashfile
+          key: Hash-${{ matrix.repo }}-${{ github.run_id }}
+          restore-keys: |
+            Hash-${{ matrix.repo }}-
+      - run: |
+          [ -e "./hashfile/hashfile" ] && hash="$(echo $(cat ./hashfile/hashfile))" || hash="${{ github.run_id }}"
+          echo "::set-env name=hash::${hash}"
+      - name: Cache Repo
         uses: actions/cache@v2
         id: cache
         with:
           path: ${{ matrix.repo }}
-          key: source-${{ matrix.repo }}-${{ env.month }}
-      - name: Clone original codes
+          key: source-${{ matrix.repo }}-${{ env.hash }}
+          restore-keys: |
+            source-${{ matrix.repo }}-
+      - name: Clone Original Codes
         if: steps.cache.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
         run: |
-          hub clone ${{ matrix.repo }} ${{ matrix.repo }}
+          [ -e "${{ matrix.repo }}/.git" ] || hub clone ${{ matrix.repo }} ${{ matrix.repo }}
       - name: Pull original codes
         id: pull
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
         run: |
+          mkdir -p hashfile
           cd ${{ matrix.repo }}
-          pre_head=$(git rev-parse HEAD)
           hub sync
+          head="$(git rev-parse --short HEAD)"
+          [ "${{ env.hash }}" != "$head" ] && echo "$head" > ${{ github.workspace }}/hashfile/hashfile
           update=1
-          [ "${{ steps.cache.outputs.cache-hit }}" = "true" ] && [ "$pre_head" = "$(git rev-parse HEAD)" ] && update=0
+          [ "${{ steps.cache.outputs.cache-hit }}" = "true" ] && [ "${{ env.hash }}" = "$head" ] && update=0
           echo "::set-output name=update::${update}"
-      - name: Push to self repo
+      - name: Push to Self Repo
         if: steps.pull.outputs.update == '1'
         env:
           GITHUB_TOKEN: ${{ secrets.SUPER_TOKEN }}
