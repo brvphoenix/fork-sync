@@ -25,7 +25,7 @@ jobs:
           echo "::set-output name=hash::${remoteHash}"
       - name: Cache Repo
         if: steps.check-src.outputs.update == '1'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         id: cache
         with:
           path: ${{ matrix.repo }}
