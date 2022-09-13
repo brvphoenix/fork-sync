@@ -18,8 +18,8 @@ jobs:
       - name: Check the Source
         id: check-src
         run: |
-          remoteHash="$(git ls-remote https://github.com/${{ matrix.repo }}.git HEAD | cut -f 1)"
-          myHash="$(git ls-remote https://github.com/brvphoenix/$(basename ${{ matrix.repo }}).git HEAD | cut -f 1)"
+          remoteHash="$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git HEAD | cut -f 1)"
+          myHash="$(git ls-remote ${GITHUB_SERVER_URL}/brvphoenix/$(basename ${{ matrix.repo }}).git HEAD | cut -f 1)"
           [ "$remoteHash" != "$myHash" ] && update=1 || update=0
           echo "::set-output name=update::${update}"
           echo "::set-output name=hash::${remoteHash}"
@@ -37,10 +37,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          [ -e "${{ matrix.repo }}/.git" ] || hub clone ${{ matrix.repo }} ${{ matrix.repo }}
+          [ -e "${{ matrix.repo }}/.git" ] || git clone ${GITHUB_SERVER_URL}/${{ matrix.repo }} ${{ matrix.repo }}
 
           cd ${{ matrix.repo }}
-          [ -z "$(git remote -v | grep "git://")" ] || git config --local url.https://github.com/.insteadOf git://github.com/
+          [ -z "$(git remote -v | grep "git://")" ] || git config --local url.${GITHUB_SERVER_URL}/.insteadOf git://github.com/
 
           hub sync
           [ -n "$(git remote | grep own)" ] && git remote remove own
