@@ -21,8 +21,8 @@ jobs:
           remoteHash="$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git HEAD | cut -f 1)"
           myHash="$(git ls-remote ${GITHUB_SERVER_URL}/brvphoenix/$(basename ${{ matrix.repo }}).git HEAD | cut -f 1)"
           [ "$remoteHash" != "$myHash" ] && update=1 || update=0
-          echo "::set-output name=update::${update}"
-          echo "::set-output name=hash::${remoteHash}"
+          echo "update=${update}" >> $GITHUB_OUTPUT
+          echo "hash=${remoteHash}" >> $GITHUB_OUTPUT
       - name: Cache Repo
         if: steps.check-src.outputs.update == '1'
         uses: actions/cache@v3
