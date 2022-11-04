@@ -18,11 +18,18 @@ jobs:
       - name: Check the Source
         id: check-src
         run: |
-          remoteHash="$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git HEAD | cut -f 1)"
-          myHash="$(git ls-remote ${GITHUB_SERVER_URL}/brvphoenix/$(basename ${{ matrix.repo }}).git HEAD | cut -f 1)"
+          remoteRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git refs/heads/*)
+          remoteHash=$(echo "$remoteRefs" | cut -f1 | sed ':tag;N;$!b tag;s/\n/-/g')
+          branches=$(echo "$remoteRefs" | cut -f2 | sed 's/\s*refs\/heads\///g')
+          myHash=
+          for br in $branches; do
+          	mh="$(git ls-remote ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY_OWNER}/$(basename ${{ matrix.repo }}).git refs/heads/${br} | cut -f1)"
+          	[ -n "${myHash}" ] && [ -n "$mh" ] && myHash="${myHash}-${mh}"
+          	[ -z "${myHash}" ] && [ -n "$mh" ] && myHash="${mh}"
+          done
           [ "$remoteHash" != "$myHash" ] && update=1 || update=0
           echo "update=${update}" >> $GITHUB_OUTPUT
-          echo "hash=${remoteHash}" >> $GITHUB_OUTPUT
+          echo "hash=$(echo ${remoteHash} | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
       - name: Cache Repo
         if: steps.check-src.outputs.update == '1'
         uses: actions/cache@v3
@@ -42,9 +49,18 @@ jobs:
           cd ${{ matrix.repo }}
           [ -z "$(git remote -v | grep "git://")" ] || git config --local url.${GITHUB_SERVER_URL}/.insteadOf git://github.com/
 
-          hub sync
-          [ -n "$(git remote | grep own)" ] && git remote remove own
+          git fetch origin --prune
+
           repo_name=$(basename ${{ matrix.repo }})
-          git remote add own https://brvphoenix:${{ secrets.SUPER_TOKEN }}@github.com/brvphoenix/${repo_name}.git
-          hub push own "$(basename $(git symbolic-ref refs/remotes/origin/HEAD))"
+          [ -n "$(git remote | grep own)" ] && git remote remove own
+          git remote add own https://${GITHUB_REPOSITORY_OWNER}:${{ secrets.SUPER_TOKEN }}@github.com/${GITHUB_REPOSITORY_OWNER}/${repo_name}.git
+
+          branches=$(git branch -a | grep -E '^\s+remotes/origin' | grep -v "remotes/origin/HEAD" | sed 's/\s*remotes\/origin\///g')
+          default_branch="$(basename $(git symbolic-ref refs/remotes/origin/HEAD))"
+
+          for branch in ${branches}; do
+          	git switch -C "$branch" "origin/$branch"
+          	git push own $branch
+          done
           git remote remove own
+          git switch "$default_branch"
