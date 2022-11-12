@@ -18,16 +18,35 @@ jobs:
       - name: Check the Source
         id: check-src
         run: |
-          remoteRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git refs/heads/*)
-          remoteHash=$(echo "$remoteRefs" | cut -f1 | sed ':tag;N;$!b tag;s/\n/-/g')
-          branches=$(echo "$remoteRefs" | cut -f2 | sed 's/\s*refs\/heads\///g')
-          myHash=
-          for br in $branches; do
-          	mh="$(git ls-remote ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY_OWNER}/$(basename ${{ matrix.repo }}).git refs/heads/${br} | cut -f1)"
-          	[ -n "${myHash}" ] && [ -n "$mh" ] && myHash="${myHash}-${mh}"
-          	[ -z "${myHash}" ] && [ -n "$mh" ] && myHash="${mh}"
+          # branches
+          remoteBranchesRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git refs/heads/*)
+          remoteBranchesHash=$(echo "$remoteBranchesRefs" | cut -f1)
+          remoteBranchesLabel=$(echo "$remoteBranchesRefs" | cut -f2 | sed 's/\s*refs\/heads\///g' | sed ':tag;N;$!b tag;s/\n/-/g')
+          myBranchesRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY_OWNER}/$(basename ${{ matrix.repo }}).git refs/heads/*)
+          myBranchesLabel=
+          for hash in $remoteBranchesHash; do
+          	mbl=$(echo "$myBranchesRefs" | grep "${hash}" | cut -f2 | sed 's/\s*refs\/heads\///g')
+          	[ -n "${myBranchesLabel}" ] && [ -n "$mbl" ] && myBranchesLabel="${myBranchesLabel}-${mbl}"
+          	[ -z "${myBranchesLabel}" ] && [ -n "$mbl" ] && myBranchesLabel="${mbl}"
           done
-          [ "$remoteHash" != "$myHash" ] && update=1 || update=0
+
+          # tags
+          remoteTagsRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${{ matrix.repo }}.git refs/tags/*)
+          remoteTagsHash=$(echo "$remoteTagsRefs" | cut -f1)
+          remoteTagsLabel=$(echo "$remoteTagsRefs" | cut -f2 | sed 's/\s*refs\/tags\///g' | sed ':tag;N;$!b tag;s/\n/-/g')
+          myTagsRefs=$(git ls-remote ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY_OWNER}/$(basename ${{ matrix.repo }}).git refs/tags/*)
+          myTagsLabel=
+          for hash in $remoteTagsHash; do
+          	mtl=$(echo "$myTagsRefs" | grep "${hash}" | cut -f2 | sed 's/\s*refs\/tags\///g')
+          	[ -n "${myTagsLabel}" ] && [ -n "$mtl" ] && myTagsLabel="${myTagsLabel}-${mtl}"
+          	[ -z "${myTagsLabel}" ] && [ -n "$mtl" ] && myTagsLabel="${mtl}"
+          done
+
+          [ -z "$remoteTagsHash" ] && remoteHash=$(echo "${remoteBranchesHash}" | sed ':tag;N;$!b tag;s/\n/-/g') || remoteHash=$(echo "${remoteBranchesHash}-${remoteTagsHash}" | sed ':tag;N;$!b tag;s/\n/-/g')
+          [ -z "$remoteTagsLabel" ] && remoteLabel=${remoteBranchesLabel} || remoteLabel=${remoteBranchesLabel}-${remoteTagsLabel}
+          [ -z "$myTagsLabel" ] && myLabel=${myBranchesLabel} || myLabel=${myBranchesLabel}-${myTagsLabel}
+
+          [ "$remoteLabel" != "$myLabel" ] && update=1 || update=0
           echo "update=${update}" >> $GITHUB_OUTPUT
           echo "hash=$(echo ${remoteHash} | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
       - name: Cache Repo
@@ -49,7 +68,7 @@ jobs:
           cd ${{ matrix.repo }}
           [ -z "$(git remote -v | grep "git://")" ] || git config --local url.${GITHUB_SERVER_URL}/.insteadOf git://github.com/
 
-          git fetch origin --prune
+          git fetch --force --prune --prune-tags origin
 
           repo_name=$(basename ${{ matrix.repo }})
           [ -n "$(git remote | grep own)" ] && git remote remove own
@@ -62,5 +81,8 @@ jobs:
           	git switch -C "$branch" "origin/$branch"
           	git push own $branch
           done
+
+          git push -f --tags own
+
           git remote remove own
-          git switch "$default_branch"
+          git switch -C "$default_branch" "origin/$default_branch"
